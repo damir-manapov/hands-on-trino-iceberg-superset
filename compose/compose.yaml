@@ -17,8 +17,7 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command: >-
-      "echo 'All services are healthy. You can now connect Superset to Trino.' &&
-       sleep infinity"
+      "echo 'All services are healthy. You can now connect Superset to Trino.'"
     networks:
       - lakehouse
 
