@@ -111,7 +111,6 @@ services:
       - ADMIN_FIRST_NAME=Admin
       - ADMIN_LAST_NAME=User
       - ADMIN_EMAIL=admin@example.com
-      - PYTHONPATH=/app/superset_home/.local/lib/python3.10/site-packages:/usr/local/lib/python3.10/site-packages:$PYTHONPATH
     command: ["/bin/bash", "/superset-init/entrypoint.sh"]
     ports:
       - "8088:8088"
