@@ -1,4 +1,23 @@
 services:
+  starter:
+    image: bash:5.2-alpine3.20
+    container_name: starter
+    depends_on:
+      minio:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+      superset:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "echo 'All services are healthy. You can now connect Superset to Trino.' &&
+       sleep infinity"
+    networks:
+      - lakehouse
+
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -28,7 +47,7 @@ services:
     ports:
       - "19120:19120"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:19120/q/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/q/health || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 20
@@ -76,14 +95,9 @@ services:
       - ADMIN_EMAIL=admin@example.com
     command: >-
       bash -c "
-      superset fab create-admin \
-        --username \"$${ADMIN_USERNAME}\" \
-        --firstname \"$${ADMIN_FIRST_NAME}\" \
-        --lastname \"$${ADMIN_LAST_NAME}\" \
-        --email \"$${ADMIN_EMAIL}\" \
-        --password \"$${ADMIN_PASSWORD}\" &&
-      superset db upgrade &&
-      superset init &&
+      superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRST_NAME} --lastname $${ADMIN_LAST_NAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true; 
+      superset db upgrade && 
+      superset init && 
       superset run -h 0.0.0.0 -p 8088
       "
     ports:
@@ -95,25 +109,6 @@ services:
       retries: 30
     volumes:
       - superset_home:/app/superset_home
-    networks:
-      - lakehouse
-
-  starter:
-    image: bash:5.2-alpine3.20
-    container_name: starter
-    depends_on:
-      minio:
-        condition: service_healthy
-      nessie:
-        condition: service_healthy
-      trino:
-        condition: service_healthy
-      superset:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      "echo 'All services are healthy. You can now connect Superset to Trino.' &&
-       sleep infinity"
     networks:
       - lakehouse
 
