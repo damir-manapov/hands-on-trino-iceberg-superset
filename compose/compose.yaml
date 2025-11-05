@@ -121,6 +121,7 @@ services:
     volumes:
       - superset_home:/app/superset_home
       - ./superset:/superset-init:ro
+      - ./superset/superset_config.py:/app/superset_home/superset_config.py:ro
     networks:
       - lakehouse
 
