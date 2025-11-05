@@ -1,0 +1,128 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=admin12345
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/ready || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    networks:
+      - lakehouse
+
+  nessie:
+    image: ghcr.io/projectnessie/nessie:latest
+    container_name: nessie
+    environment:
+      - QUARKUS_HTTP_PORT=19120
+      - QUARKUS_LOG_LEVEL=INFO
+    ports:
+      - "19120:19120"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:19120/q/health || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    networks:
+      - lakehouse
+
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    depends_on:
+      minio:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+    networks:
+      - lakehouse
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    depends_on:
+      trino:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+    environment:
+      - SUPERSET_ENV=production
+      - SUPERSET_LOAD_EXAMPLES=no
+      - SUPERSET_SECRET_KEY=please_change_me
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin12345
+      - ADMIN_FIRST_NAME=Admin
+      - ADMIN_LAST_NAME=User
+      - ADMIN_EMAIL=admin@example.com
+    command: >-
+      bash -c "
+      superset fab create-admin \
+        --username \"$${ADMIN_USERNAME}\" \
+        --firstname \"$${ADMIN_FIRST_NAME}\" \
+        --lastname \"$${ADMIN_LAST_NAME}\" \
+        --email \"$${ADMIN_EMAIL}\" \
+        --password \"$${ADMIN_PASSWORD}\" &&
+      superset db upgrade &&
+      superset init &&
+      superset run -h 0.0.0.0 -p 8088
+      "
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8088/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - lakehouse
+
+  starter:
+    image: bash:5.2-alpine3.20
+    container_name: starter
+    depends_on:
+      minio:
+        condition: service_healthy
+      nessie:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+      superset:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "echo 'All services are healthy. You can now connect Superset to Trino.' &&
+       sleep infinity"
+    networks:
+      - lakehouse
+
+networks:
+  lakehouse:
+    driver: bridge
+
+volumes:
+  minio_data:
+  superset_home:
+
+
