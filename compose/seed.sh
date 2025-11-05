@@ -76,4 +76,3 @@ sh -c "$TRINO_CMD --execute 'SELECT count(*) AS rows, min(id) AS min_id, max(id)
 
 echo "[seed] Done." >&2
 
-

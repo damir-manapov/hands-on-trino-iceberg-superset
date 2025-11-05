@@ -138,9 +138,9 @@ services:
       trino:
         condition: service_healthy
     entrypoint: ["/bin/sh"]
-    command: ["/catalog/seed.sh"]
+    command: ["/seed/seed.sh"]
     volumes:
-      - ./trino/catalog:/catalog:ro
+      - ./seed.sh:/seed/seed.sh:ro
     networks:
       - lakehouse
 
