@@ -136,8 +136,6 @@ services:
         condition: service_healthy
       trino:
         condition: service_healthy
-    environment:
-      - TRINO_SERVER=http://trino:8080
     entrypoint: ["/bin/sh"]
     command: ["/catalog/seed.sh"]
     volumes:
