@@ -4,6 +4,16 @@ set -euo pipefail
 # Use system Python inside the container; global site-packages contain required deps
 PYTHON=python
 
+# Ensure Trino SQLAlchemy driver and dependencies are available (idempotent)
+if ! $PYTHON -c 'import sqlalchemy_trino, trino' >/dev/null 2>&1; then
+  pip install --no-cache-dir \
+    'trino[sqlalchemy]' \
+    sqlalchemy-trino \
+    lz4 zstandard \
+    requests urllib3 certifi chardet idna \
+    python-dateutil pytz tzlocal orjson
+fi
+
 superset fab create-admin \
   --username "${ADMIN_USERNAME:-admin}" \
   --firstname "${ADMIN_FIRST_NAME:-Admin}" \
