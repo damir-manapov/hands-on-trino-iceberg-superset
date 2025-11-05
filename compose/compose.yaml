@@ -11,6 +11,8 @@ services:
         condition: service_healthy
       trino:
         condition: service_healthy
+      trino-seed:
+        condition: service_completed_successfully
       superset:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
@@ -125,6 +127,25 @@ services:
       retries: 30
     volumes:
       - superset_home:/app/superset_home
+    networks:
+      - lakehouse
+
+  trino-seed:
+    image: trinodb/trino:478
+    container_name: trino-seed
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      nessie:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: sh /catalog/seed.sh
+    volumes:
+      - ./trino/catalog:/catalog:ro
     networks:
       - lakehouse
 
