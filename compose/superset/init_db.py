@@ -99,63 +99,46 @@ def ensure_datasets(database):
     return datasets
 
 
-def ensure_charts(datasets):
-    """Create example charts for datasets"""
+def create_chart_for_dataset(dataset, chart_name, preferred_columns=None):
+    """Create a table chart for a dataset"""
     from superset import db
     from superset.models.slice import Slice
     import json
     
-    # Only create charts if we have datasets
-    if not datasets:
-        print("[init] No datasets available for chart creation")
-        return
-    
-    # Create a simple table chart showing row counts
     try:
-        # Get the events dataset for the example chart
-        events_dataset = next((d for d in datasets if d.table_name == "events"), None)
-        if not events_dataset:
-            print("[init] Events dataset not found, skipping chart creation")
-            return
-        
         # Ensure columns are synced
-        try:
-            if not events_dataset.columns:
-                events_dataset.fetch_metadata()
-                db.session.commit()
-                print(f"[init] Synced columns for events dataset")
-        except Exception as e:
-            print(f"[init] Warning: Could not sync columns: {e}")
+        if not dataset.columns:
+            dataset.fetch_metadata()
+            db.session.commit()
         
         # Check if chart already exists
         existing = db.session.query(Slice).filter_by(
-            datasource_id=events_dataset.id,
+            datasource_id=dataset.id,
             datasource_type="table",
-            slice_name="Events Overview"
+            slice_name=chart_name
         ).first()
         
         if existing:
-            print(f"[init] Chart exists: Events Overview")
-            # Refresh to get latest columns
+            print(f"[init] Chart exists: {chart_name}")
             db.session.refresh(existing)
             return existing
         
         # Get available columns from the dataset
-        available_columns = [col.column_name for col in events_dataset.columns]
+        available_columns = [col.column_name for col in dataset.columns]
         if not available_columns:
-            # If no columns synced, use a simpler chart with just count
             all_columns = []
         else:
-            # Use available columns, preferring common ones
-            preferred_columns = ["id", "ts", "event_type", "user_id", "amount", "payload"]
-            all_columns = [col for col in preferred_columns if col in available_columns]
+            if preferred_columns:
+                all_columns = [col for col in preferred_columns if col in available_columns]
+            else:
+                all_columns = available_columns[:5]
             # If no preferred columns found, use first few available
             if not all_columns and available_columns:
                 all_columns = available_columns[:5]
         
         # Create form_data for a simple table chart
         form_data = {
-            "datasource": f"{events_dataset.id}__table",
+            "datasource": f"{dataset.id}__table",
             "viz_type": "table",
             "slice_id": None,
             "url_params": {},
@@ -174,34 +157,62 @@ def ensure_charts(datasets):
         }
         
         chart = Slice(
-            slice_name="Events Overview",
-            datasource_id=events_dataset.id,
+            slice_name=chart_name,
+            datasource_id=dataset.id,
             datasource_type="table",
             viz_type="table",
             params=json.dumps(form_data),
-            description="Overview of event data",
+            description=f"Overview of {dataset.table_name} data",
         )
         db.session.add(chart)
         db.session.commit()
-        print(f"[init] Chart created: Events Overview")
+        print(f"[init] Chart created: {chart_name}")
         return chart
         
     except Exception as e:
-        print(f"[init] Warning: Could not create chart: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[init] Warning: Could not create chart {chart_name}: {e}")
         db.session.rollback()
         return None
 
 
-def ensure_dashboard(chart):
-    """Create a dashboard with the chart"""
+def ensure_charts(datasets):
+    """Create example charts for all datasets"""
+    if not datasets:
+        print("[init] No datasets available for chart creation")
+        return []
+    
+    charts = []
+    
+    # Chart configurations for each table
+    chart_configs = [
+        ("events", "Events Overview", ["id", "ts", "event_type", "user_id", "amount", "payload"]),
+        ("users", "Users Overview", ["user_id", "username", "email", "country", "active", "created_at"]),
+        ("orders", "Orders Overview", ["order_id", "user_id", "product_id", "quantity", "price", "status", "order_date"]),
+        ("products", "Products Overview", ["product_id", "name", "category", "price", "stock", "created_at"]),
+        ("transactions", "Transactions Overview", ["transaction_id", "user_id", "amount", "currency", "transaction_type", "status", "timestamp"]),
+    ]
+    
+    # Create charts for each dataset
+    for table_name, chart_name, preferred_columns in chart_configs:
+        dataset = next((d for d in datasets if d.table_name == table_name), None)
+        if dataset:
+            chart = create_chart_for_dataset(dataset, chart_name, preferred_columns)
+            if chart:
+                charts.append(chart)
+        else:
+            print(f"[init] Dataset not found for {table_name}, skipping chart")
+    
+    return charts
+
+
+def ensure_dashboard(charts):
+    """Create a dashboard with all charts"""
     from superset import db
     from superset.models.dashboard import Dashboard
     import json
     
-    if not chart:
-        print("[init] No chart available for dashboard creation")
+    if not charts:
+        print("[init] No charts available for dashboard creation")
         return
     
     try:
@@ -212,35 +223,88 @@ def ensure_dashboard(chart):
         
         if existing:
             print(f"[init] Dashboard exists: {existing.dashboard_title}")
+            # Update existing dashboard with all charts
+            updated = False
+            for chart in charts:
+                if chart not in existing.slices:
+                    existing.slices.append(chart)
+                    updated = True
+            
+            # Update JSON metadata to include all charts
+            try:
+                import json as json_module
+                metadata = json_module.loads(existing.json_metadata or "{}")
+                grid_children = metadata.get("GRID_ID", {}).get("children", [])
+                
+                # Add any missing charts to the layout
+                for idx, chart in enumerate(charts, 1):
+                    chart_id = f"CHART-{idx}"
+                    if chart_id not in metadata:
+                        metadata[chart_id] = {
+                            "children": [],
+                            "id": chart_id,
+                            "meta": {
+                                "chartId": chart.id,
+                                "height": 50,
+                                "sliceName": chart.slice_name,
+                                "width": 6,
+                            },
+                            "type": "CHART",
+                            "parents": ["ROOT_ID", "GRID_ID"],
+                        }
+                        if chart_id not in grid_children:
+                            grid_children.append(chart_id)
+                
+                if "GRID_ID" not in metadata:
+                    metadata["GRID_ID"] = {"children": [], "id": "GRID_ID", "parents": ["ROOT_ID"], "type": "GRID"}
+                metadata["GRID_ID"]["children"] = grid_children
+                existing.json_metadata = json_module.dumps(metadata)
+                updated = True
+            except Exception as e:
+                print(f"[init] Warning: Could not update dashboard metadata: {e}")
+            
+            if updated:
+                db.session.commit()
+                print(f"[init] Dashboard updated with {len(charts)} charts")
             return
         
-        # Create dashboard JSON metadata with chart positioned
+        # Create dashboard JSON metadata with all charts positioned in a grid
+        # Arrange charts in rows, 2 per row (each 6 width)
         dashboard_json = {
-            "CHART-1": {
-                "children": [],
-                "id": "CHART-1",
-                "meta": {
-                    "chartId": chart.id,
-                    "height": 50,
-                    "sliceName": chart.slice_name,
-                    "width": 12,
-                },
-                "type": "CHART",
-                "parents": ["ROOT_ID", "GRID_ID"],
-            },
             "DASHBOARD_VERSION_KEY": "v2",
-            "GRID_ID": {
-                "children": ["CHART-1"],
-                "id": "GRID_ID",
-                "parents": ["ROOT_ID"],
-                "type": "GRID",
-            },
             "ROOT_ID": {
                 "children": ["GRID_ID"],
                 "id": "ROOT_ID",
                 "type": "ROOT",
             },
+            "GRID_ID": {
+                "children": [],
+                "id": "GRID_ID",
+                "parents": ["ROOT_ID"],
+                "type": "GRID",
+            },
         }
+        
+        # Create chart components
+        for idx, chart in enumerate(charts, 1):
+            chart_id = f"CHART-{idx}"
+            # Position: 2 charts per row, each taking 6 columns
+            row = (idx - 1) // 2
+            col = ((idx - 1) % 2) * 6
+            
+            dashboard_json[chart_id] = {
+                "children": [],
+                "id": chart_id,
+                "meta": {
+                    "chartId": chart.id,
+                    "height": 50,
+                    "sliceName": chart.slice_name,
+                    "width": 6,
+                },
+                "type": "CHART",
+                "parents": ["ROOT_ID", "GRID_ID"],
+            }
+            dashboard_json["GRID_ID"]["children"].append(chart_id)
         
         dashboard = Dashboard(
             dashboard_title="Iceberg Demo Dashboard",
@@ -251,11 +315,12 @@ def ensure_dashboard(chart):
         db.session.add(dashboard)
         db.session.commit()
         
-        # Add chart to dashboard
-        dashboard.slices.append(chart)
+        # Add all charts to dashboard
+        for chart in charts:
+            dashboard.slices.append(chart)
         db.session.commit()
         
-        print(f"[init] Dashboard created: Iceberg Demo Dashboard")
+        print(f"[init] Dashboard created: Iceberg Demo Dashboard with {len(charts)} charts")
         
     except Exception as e:
         print(f"[init] Warning: Could not create dashboard: {e}")
@@ -272,12 +337,12 @@ if __name__ == "__main__":
         import time
         time.sleep(2)
         datasets = ensure_datasets(database)
-        # Create example charts
-        chart = None
+        # Create example charts for all datasets
+        charts = []
         if datasets:
-            chart = ensure_charts(datasets)
-        # Create dashboard with the chart
-        if chart:
-            ensure_dashboard(chart)
+            charts = ensure_charts(datasets)
+        # Create dashboard with all charts
+        if charts:
+            ensure_dashboard(charts)
 
 
