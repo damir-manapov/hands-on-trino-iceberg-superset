@@ -1,10 +1,12 @@
 services:
   starter:
-    image: bash:5.2-alpine3.20
+    image: alpine:3.20.3
     container_name: starter
     depends_on:
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       nessie:
         condition: service_healthy
       trino:
@@ -19,7 +21,7 @@ services:
       - lakehouse
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: minio
     command: server /data --console-address ":9001"
     environment:
@@ -38,8 +40,22 @@ services:
     networks:
       - lakehouse
 
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - MC_HOST_local=http://admin:admin12345@minio:9000
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "mc mb -p local/warehouse || true && echo 'MinIO bucket initialized'"
+    networks:
+      - lakehouse
+
   nessie:
-    image: ghcr.io/projectnessie/nessie:latest
+    image: ghcr.io/projectnessie/nessie:0.105.6
     container_name: nessie
     environment:
       - QUARKUS_HTTP_PORT=19120
@@ -55,7 +71,7 @@ services:
       - lakehouse
 
   trino:
-    image: trinodb/trino:latest
+    image: trinodb/trino:478
     container_name: trino
     depends_on:
       minio:
@@ -75,7 +91,7 @@ services:
       - lakehouse
 
   superset:
-    image: apache/superset:latest
+    image: apache/superset:5.0.0
     container_name: superset
     depends_on:
       trino:
