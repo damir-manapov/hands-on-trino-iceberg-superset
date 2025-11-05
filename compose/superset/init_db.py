@@ -127,16 +127,18 @@ def ensure_charts(datasets):
         except Exception as e:
             print(f"[init] Warning: Could not sync columns: {e}")
         
-        # Check if chart already exists - if so, delete it to recreate with correct columns
+        # Check if chart already exists
         existing = db.session.query(Slice).filter_by(
             datasource_id=events_dataset.id,
-            datasource_type="table"
+            datasource_type="table",
+            slice_name="Events Overview"
         ).first()
         
         if existing:
-            db.session.delete(existing)
-            db.session.commit()
-            print(f"[init] Deleted existing chart, recreating: Events Overview")
+            print(f"[init] Chart exists: Events Overview")
+            # Refresh to get latest columns
+            db.session.refresh(existing)
+            return existing
         
         # Get available columns from the dataset
         available_columns = [col.column_name for col in events_dataset.columns]
@@ -182,9 +184,81 @@ def ensure_charts(datasets):
         db.session.add(chart)
         db.session.commit()
         print(f"[init] Chart created: Events Overview")
+        return chart
         
     except Exception as e:
         print(f"[init] Warning: Could not create chart: {e}")
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return None
+
+
+def ensure_dashboard(chart):
+    """Create a dashboard with the chart"""
+    from superset import db
+    from superset.models.dashboard import Dashboard
+    import json
+    
+    if not chart:
+        print("[init] No chart available for dashboard creation")
+        return
+    
+    try:
+        # Check if dashboard already exists
+        existing = db.session.query(Dashboard).filter_by(
+            dashboard_title="Iceberg Demo Dashboard"
+        ).first()
+        
+        if existing:
+            print(f"[init] Dashboard exists: {existing.dashboard_title}")
+            return
+        
+        # Create dashboard JSON metadata with chart positioned
+        dashboard_json = {
+            "CHART-1": {
+                "children": [],
+                "id": "CHART-1",
+                "meta": {
+                    "chartId": chart.id,
+                    "height": 50,
+                    "sliceName": chart.slice_name,
+                    "width": 12,
+                },
+                "type": "CHART",
+                "parents": ["ROOT_ID", "GRID_ID"],
+            },
+            "DASHBOARD_VERSION_KEY": "v2",
+            "GRID_ID": {
+                "children": ["CHART-1"],
+                "id": "GRID_ID",
+                "parents": ["ROOT_ID"],
+                "type": "GRID",
+            },
+            "ROOT_ID": {
+                "children": ["GRID_ID"],
+                "id": "ROOT_ID",
+                "type": "ROOT",
+            },
+        }
+        
+        dashboard = Dashboard(
+            dashboard_title="Iceberg Demo Dashboard",
+            slug="iceberg-demo-dashboard",
+            json_metadata=json.dumps(dashboard_json),
+            published=True,
+        )
+        db.session.add(dashboard)
+        db.session.commit()
+        
+        # Add chart to dashboard
+        dashboard.slices.append(chart)
+        db.session.commit()
+        
+        print(f"[init] Dashboard created: Iceberg Demo Dashboard")
+        
+    except Exception as e:
+        print(f"[init] Warning: Could not create dashboard: {e}")
         import traceback
         traceback.print_exc()
         db.session.rollback()
@@ -199,7 +273,11 @@ if __name__ == "__main__":
         time.sleep(2)
         datasets = ensure_datasets(database)
         # Create example charts
+        chart = None
         if datasets:
-            ensure_charts(datasets)
+            chart = ensure_charts(datasets)
+        # Create dashboard with the chart
+        if chart:
+            ensure_dashboard(chart)
 
 
