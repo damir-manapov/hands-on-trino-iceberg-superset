@@ -93,7 +93,10 @@ services:
       - lakehouse
 
   superset:
-    image: apache/superset:5.0.0
+    build:
+      context: ./superset
+      dockerfile: Dockerfile
+    image: local/superset-trino:4.1.4
     container_name: superset
     depends_on:
       trino:
@@ -111,13 +114,7 @@ services:
       - ADMIN_FIRST_NAME=Admin
       - ADMIN_LAST_NAME=User
       - ADMIN_EMAIL=admin@example.com
-    command: >-
-      bash -c "
-      superset fab create-admin --username $${ADMIN_USERNAME} --firstname $${ADMIN_FIRST_NAME} --lastname $${ADMIN_LAST_NAME} --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true; 
-      superset db upgrade && 
-      superset init && 
-      superset run -h 0.0.0.0 -p 8088
-      "
+    command: ["/bin/bash", "/superset-init/entrypoint.sh"]
     ports:
       - "8088:8088"
     healthcheck:
@@ -127,6 +124,7 @@ services:
       retries: 30
     volumes:
       - superset_home:/app/superset_home
+      - ./superset:/superset-init:ro
     networks:
       - lakehouse
 
