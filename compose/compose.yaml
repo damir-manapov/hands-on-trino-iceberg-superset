@@ -83,10 +83,10 @@ services:
     volumes:
       - ./trino/catalog:/etc/trino/catalog:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info | grep -q '\"starting\":false' || exit 1"]
       interval: 5s
-      timeout: 2s
-      retries: 30
+      timeout: 3s
+      retries: 40
     networks:
       - lakehouse
 
