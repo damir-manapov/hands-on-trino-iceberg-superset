@@ -17,7 +17,42 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command: >-
-      "echo 'All services are healthy. You can now connect Superset to Trino.'"
+      "echo '' &&
+      echo '========================================' &&
+      echo '  All services are healthy and ready!' &&
+      echo '========================================' &&
+      echo '' &&
+      echo 'Service Connection Information:' &&
+      echo '' &&
+      echo '📦 MinIO (S3 Storage):' &&
+      echo '   Console URL: http://localhost:9001' &&
+      echo '   S3 API: http://localhost:9000' &&
+      echo '   Username: admin' &&
+      echo '   Password: admin12345' &&
+      echo '' &&
+      echo '🗄️  Nessie (Iceberg Catalog):' &&
+      echo '   URL: http://localhost:19120' &&
+      echo '   Health: http://localhost:19120/q/health' &&
+      echo '   API: http://localhost:19120/api/v2' &&
+      echo '' &&
+      echo '🔍 Trino (Query Engine):' &&
+      echo '   Web UI: http://localhost:8080' &&
+      echo '   Connection URI: trino://trino@trino:8080' &&
+      echo '   (For Superset: trino://trino@trino:8080)' &&
+      echo '   (For external clients: trino://trino@localhost:8080)' &&
+      echo '' &&
+      echo '📊 Superset (BI/Visualization):' &&
+      echo '   URL: http://localhost:8088' &&
+      echo '   Username: admin' &&
+      echo '   Password: admin12345' &&
+      echo '' &&
+      echo '💡 Quick Start:' &&
+      echo '   1. Open Superset: http://localhost:8088' &&
+      echo '   2. Log in with admin/admin12345' &&
+      echo '   3. Add Trino database: Settings → Data → Databases' &&
+      echo '   4. Use connection URI: trino://trino@trino:8080' &&
+      echo '' &&
+      echo '========================================'"
     networks:
       - lakehouse
 
